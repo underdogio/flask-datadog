@@ -1,18 +1,18 @@
 from setuptools import setup
 
 setup(
-    name='Flask-StatsD',
-    version='0.1.1',
-    url='https://github.com/cyberdelia/flask-statsd',
+    name='Flask-DogStatsD',
+    version='0.1.0',
+    url='https://github.com/50onRed/flask-dogstatsd.git',
     license='BSD',
-    author='Timothee Peignier',
-    author_email='timothee.peignier@tryphon.org',
-    description='Access to statsd in your app.',
-    py_modules=['flask_statsd'],
+    author='50onRed',
+    author_email='dev@50onred.com',
+    description='Access to dogstatsd in your app.',
+    py_modules=['flask_dogstatsd'],
     zip_safe=False,
     include_package_data=True,
     platforms='any',
-    install_requires=['Flask', 'statsd'],
+    install_requires=['Flask', 'datadog'],
     classifiers=[
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
