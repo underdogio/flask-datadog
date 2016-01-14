@@ -1,14 +1,14 @@
 from setuptools import setup
 
 setup(
-    name='Flask-DogStatsD',
-    version='0.1.0',
-    url='https://github.com/50onRed/flask-dogstatsd.git',
+    name='Flask-Datadog',
+    version='0.1.1',
+    url='https://github.com/50onRed/flask-datadog.git',
     license='BSD',
     author='50onRed',
-    author_email='dev@50onred.com',
+    author_email='marcus.mccurdy@gmail.com',
     description='Access to dogstatsd in your app.',
-    py_modules=['flask_dogstatsd'],
+    py_modules=['flask_datadog'],
     zip_safe=False,
     include_package_data=True,
     platforms='any',
