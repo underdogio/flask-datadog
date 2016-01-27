@@ -14,7 +14,7 @@ class TimerWrapper(DogStatsd._TimedContextManagerDecorator):
 
 class StatsD(object):
     def __init__(self, app=None, config=None):
-        self.config = None
+        self.config = config
         self.statsd = None
         if app is not None:
             self.init_app(app)
@@ -30,11 +30,16 @@ class StatsD(object):
         self.config.setdefault('STATSD_HOST', 'localhost')
         self.config.setdefault('STATSD_PORT', 8125)
         self.config.setdefault('STATSD_TAGS', None)
+        self.config.setdefault('STATSD_USEMS', False)
 
         self.app = app
 
         self.statsd = DogStatsd(self.config['STATSD_HOST'],
                                 self.config['STATSD_PORT'], self.config['STATSD_TAGS'])
+
+    @property
+    def use_ms(self):
+        return self.config.get('use_ms', False)
 
     def timer(self, *args, **kwargs):
         return TimerWrapper(self.statsd, *args, **kwargs)
