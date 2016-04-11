@@ -14,8 +14,24 @@ class TimerWrapper(DogStatsd._TimedContextManagerDecorator):
 
 class StatsD(object):
     def __init__(self, app=None, config=None):
+        """
+        Constructor for `flask.ext.datadog.StatsD`
+
+        >>> from flask.ext.datadog import StatsD
+        >>> app = Flask(__name__)
+        >>> statsd = StatsD(app=app)
+
+        :param app: Flask app to configure this client for, if `app` is `None`, then do not
+            configure yet (call `init_app` manually instead)
+        :type app: flask.Flask or None
+
+        :param config: Configuration for this client to use instead of `app.config`
+        :type config: dict or None
+        """
         self.config = config
         self.statsd = None
+
+        # If an app was provided, then call `init_app` for them
         if app is not None:
             self.init_app(app)
         else:
@@ -25,9 +41,15 @@ class StatsD(object):
         """
         Initialize Datadog DogStatsd client from Flask app
 
+        >>> from flask.ext.datadog import StatsD
+        >>> app = Flask(__name__)
+        >>> statsd = StatsD()
+        >>> statsd.init_app(app=app)
+
         Available config settings:
 
           STATSD_HOST - statsd host to send metrics to (default: 'localhost')
+          STATSD_MAX_BUFFER_SIZE - max number of metrics to buffer before sending, only used when batching (default: 50)
           STATSD_NAMESPACE - metric name prefix to use, e.g. 'app_name' (default: None)
           STATSD_PORT - statsd port to send metrics to (default: 8125)
           STATSD_TAGS - list of tags to include by default, e.g. ['env:prod'] (default: None)
@@ -47,6 +69,7 @@ class StatsD(object):
 
         # Set default values for expected config properties
         self.config.setdefault('STATSD_HOST', 'localhost')
+        self.config.setdefault('STATSD_MAX_BUFFER_SIZE', 50)
         self.config.setdefault('STATSD_NAMESPACE', None)
         self.config.setdefault('STATSD_PORT', 8125)
         self.config.setdefault('STATSD_TAGS', None)
@@ -58,37 +81,46 @@ class StatsD(object):
         # https://github.com/DataDog/datadogpy/blob/v0.11.0/datadog/dogstatsd/base.py
         self.statsd = DogStatsd(host=self.config['STATSD_HOST'],
                                 port=self.config['STATSD_PORT'],
+                                max_buffer_size=self.config['STATSD_MAX_BUFFER_SIZE'],
                                 namespace=self.config['STATSD_NAMESPACE'],
                                 constant_tags=self.config['STATSD_TAGS'],
                                 use_ms=self.config['STATSD_USEMS'])
 
-    @property
-    def use_ms(self):
-        return self.config.get('use_ms', False)
-
     def timer(self, *args, **kwargs):
+        """Helper to get a `flask_datadog.TimerWrapper` for this `DogStatsd` client"""
         return TimerWrapper(self.statsd, *args, **kwargs)
 
-    def timed(self, *args, **kwargs):
-        return self.statsd.timed(*args, **kwargs)
-
-    def timing(self, *args, **kwargs):
-        return self.statsd.timing(*args, **kwargs)
-
     def incr(self, *args, **kwargs):
+        """Helper to expose `self.statsd.increment` under a shorter name"""
         return self.statsd.increment(*args, **kwargs)
 
     def decr(self, *args, **kwargs):
+        """Helper to expose `self.statsd.decrement` under a shorter name"""
         return self.statsd.decrement(*args, **kwargs)
 
-    def gauge(self, *args, **kwargs):
-        return self.statsd.gauge(*args, **kwargs)
+    def __getattr__(self, name):
+        """
+        Magic method for fetching any underlying attributes from `self.statsd`
 
-    def histogram(self, *args, **kwargs):
-        return self.statsd.histogram(*args, **kwargs)
+        We utilize `__getattr__` to ensure that we are always compatible with
+        the `DogStatsd` client.
+        """
+        # If `self.statsd` has the attribute then return that attribute
+        if self.statsd and hasattr(self.statsd, name):
+            return getattr(self.statsd, name)
+        raise AttributeError('\'StatsD\' has has attribute \'%s\'' % (name, ))
 
-    def set(self, *args, **kwargs):
-        return self.statsd.set(*args, **kwargs)
+    def __enter__(self):
+        """
+        Helper to expose the underlying `DogStatsd` client for context managing
 
-    def event(self, *args, **kwargs):
-        return self.statsd.event(*args, **kwargs)
+        >>> statsd = StatsD(app=app)
+        >>> # Batch any metrics within the `with` block
+        >>> with statsd:
+        >>>   statsd.increment('metric')
+        """
+        return self.statsd.__enter__()
+
+    def __exit__(self, *args, **kwargs):
+        """Helper to expose the underlying `DogStatsd` client for context managing"""
+        return self.statsd.__exit__(*args, **kwargs)
