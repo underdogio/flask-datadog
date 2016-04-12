@@ -158,10 +158,6 @@ class StatsD(object):
             self.add_request_tags(['status_code:%s' % (response.status_code, )])
 
         # Emit our timing metric
-        print (self.config['DATADOG_RESPONSE_METRIC_NAME'],
-               elapsed,
-               self.get_request_tags(),
-               self.config['DATADOG_RESPONSE_SAMPLE_RATE'])
         self.statsd.timing(self.config['DATADOG_RESPONSE_METRIC_NAME'],
                            elapsed,
                            self.get_request_tags(),
