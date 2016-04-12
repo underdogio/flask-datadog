@@ -183,7 +183,7 @@ class StatsD(object):
         :rtype: list
         """
         # Get the current list of tags to append to
-        # DEV: We use this method since ``self.get_request_tags`` will ensure ``g.flask_datadog_request_tags`` is set
+        # DEV: We use this method since ``self.get_request_tags`` will ensure that we get a list back
         current_tags = self.get_request_tags()
 
         # Append our new tags, and return the new full list of tags for this request
