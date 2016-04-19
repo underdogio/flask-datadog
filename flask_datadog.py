@@ -64,6 +64,8 @@ class StatsD(object):
           DATADOG_RESPONSE_METRIC_NAME - the name of the response time metric (default: 'flask.response.time')
           DATADOG_RESPONSE_SAMPLE_RATE - the sample rate to use for response timing middleware (default: 1)
           DATADOG_RESPONSE_AUTO_TAG - whether to auto-add request/response tags to response metrics (default: True)
+          DATADOG_RESPONSE_ENDPOINT_TAG_NAME - tag name to use for request endpoint tag name (default: 'endpoint')
+          DATADOG_RESPONSE_METHOD_TAG_NAME - tag name to use for the request method tag name (default: 'method')
 
         :param app: Flask app to configure this client for
         :type app: flask.Flask
@@ -118,6 +120,8 @@ class StatsD(object):
         self.config.setdefault('DATADOG_RESPONSE_METRIC_NAME', 'flask.response.time')
         self.config.setdefault('DATADOG_RESPONSE_SAMPLE_RATE', 1)
         self.config.setdefault('DATADOG_RESPONSE_AUTO_TAG', True)
+        self.config.setdefault('DATADOG_RESPONSE_ENDPOINT_TAG_NAME', 'endpoint')
+        self.config.setdefault('DATADOG_RESPONSE_METHOD_TAG_NAME', 'method')
         if self.config['DATADOG_CONFIGURE_MIDDLEWARE']:
             self.app.before_request(self.before_request)
             self.app.after_request(self.after_request)
@@ -132,8 +136,14 @@ class StatsD(object):
 
         # Add some default request tags
         if self.config['DATADOG_RESPONSE_AUTO_TAG']:
-            self.add_request_tags(['endpoint:%s' % (str(request.endpoint).lower(), ),
-                                   'method:%s' % (request.method.lower(), )])
+            self.add_request_tags([
+                # Endpoint tag
+                '{tag_name}:{endpoint}'.format(tag_name=self.config['DATADOG_RESPONSE_ENDPOINT_TAG_NAME'],
+                                               endpoint=str(request.endpoint).lower()),
+                # Method tag
+                '{tag_name}:{method}'.format(tag_name=self.config['DATADOG_RESPONSE_METHOD_TAG_NAME'],
+                                             method=request.method.lower()),
+            ])
 
     def after_request(self, response):
         """
