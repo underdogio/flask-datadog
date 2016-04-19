@@ -210,7 +210,7 @@ class StatsD(object):
         # If `self.statsd` has the attribute then return that attribute
         if self.statsd and hasattr(self.statsd, name):
             return getattr(self.statsd, name)
-        raise AttributeError('\'StatsD\' has has attribute \'%s\'' % (name, ))
+        raise AttributeError('\'StatsD\' has has attribute \'{name}\''.format(name=name))
 
     def __enter__(self):
         """
