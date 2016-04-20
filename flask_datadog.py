@@ -1,4 +1,7 @@
+import time
+
 from datadog.dogstatsd.base import DogStatsd
+from flask import g, request
 
 
 class TimerWrapper(DogStatsd._TimedContextManagerDecorator):
@@ -46,7 +49,7 @@ class StatsD(object):
         >>> statsd = StatsD()
         >>> statsd.init_app(app=app)
 
-        Available config settings:
+        Available DogStatsd config settings:
 
           STATSD_HOST - statsd host to send metrics to (default: 'localhost')
           STATSD_MAX_BUFFER_SIZE - max number of metrics to buffer before sending, only used when batching (default: 50)
@@ -54,6 +57,15 @@ class StatsD(object):
           STATSD_PORT - statsd port to send metrics to (default: 8125)
           STATSD_TAGS - list of tags to include by default, e.g. ['env:prod'] (default: None)
           STATSD_USEMS - whether or not to report timing in milliseconds (default: False)
+
+        Available Flask-Datadog config settings:
+
+          DATADOG_CONFIGURE_MIDDLEWARE - whether or not to setup response timing middleware (default: True)
+          DATADOG_RESPONSE_METRIC_NAME - the name of the response time metric (default: 'flask.response.time')
+          DATADOG_RESPONSE_SAMPLE_RATE - the sample rate to use for response timing middleware (default: 1)
+          DATADOG_RESPONSE_AUTO_TAG - whether to auto-add request/response tags to response metrics (default: True)
+          DATADOG_RESPONSE_ENDPOINT_TAG_NAME - tag name to use for request endpoint tag name (default: 'endpoint')
+          DATADOG_RESPONSE_METHOD_TAG_NAME - tag name to use for the request method tag name (default: 'method')
 
         :param app: Flask app to configure this client for
         :type app: flask.Flask
@@ -86,6 +98,9 @@ class StatsD(object):
                                 constant_tags=self.config['STATSD_TAGS'],
                                 use_ms=self.config['STATSD_USEMS'])
 
+        # Configure any of our middleware
+        self.setup_middleware()
+
     def timer(self, *args, **kwargs):
         """Helper to get a `flask_datadog.TimerWrapper` for this `DogStatsd` client"""
         return TimerWrapper(self.statsd, *args, **kwargs)
@@ -98,6 +113,93 @@ class StatsD(object):
         """Helper to expose `self.statsd.decrement` under a shorter name"""
         return self.statsd.decrement(*args, **kwargs)
 
+    def setup_middleware(self):
+        """Helper to configure/setup any Flask-Datadog middleware"""
+        # Configure response time middleware (if desired)
+        self.config.setdefault('DATADOG_CONFIGURE_MIDDLEWARE', True)
+        self.config.setdefault('DATADOG_RESPONSE_METRIC_NAME', 'flask.response.time')
+        self.config.setdefault('DATADOG_RESPONSE_SAMPLE_RATE', 1)
+        self.config.setdefault('DATADOG_RESPONSE_AUTO_TAG', True)
+        self.config.setdefault('DATADOG_RESPONSE_ENDPOINT_TAG_NAME', 'endpoint')
+        self.config.setdefault('DATADOG_RESPONSE_METHOD_TAG_NAME', 'method')
+        if self.config['DATADOG_CONFIGURE_MIDDLEWARE']:
+            self.app.before_request(self.before_request)
+            self.app.after_request(self.after_request)
+
+    def before_request(self):
+        """
+        Flask-Datadog middleware handle for before each request
+        """
+        # Set the request start time
+        g.flask_datadog_start_time = time.time()
+        g.flask_datadog_request_tags = []
+
+        # Add some default request tags
+        if self.config['DATADOG_RESPONSE_AUTO_TAG']:
+            self.add_request_tags([
+                # Endpoint tag
+                '{tag_name}:{endpoint}'.format(tag_name=self.config['DATADOG_RESPONSE_ENDPOINT_TAG_NAME'],
+                                               endpoint=str(request.endpoint).lower()),
+                # Method tag
+                '{tag_name}:{method}'.format(tag_name=self.config['DATADOG_RESPONSE_METHOD_TAG_NAME'],
+                                             method=request.method.lower()),
+            ])
+
+    def after_request(self, response):
+        """
+        Flask-Datadog middleware handler for after each request
+
+        :param response: the response to be sent to the client
+        :type response: ``flask.Response``
+        :rtype: ``flask.Response``
+        """
+        # Return early if we don't have the start time
+        if not hasattr(g, 'flask_datadog_start_time'):
+            return response
+
+        # Get the response time for this request
+        elapsed = time.time() - g.flask_datadog_start_time
+        # Convert the elapsed time to milliseconds if they want them
+        if self.use_ms:
+            elapsed = int(round(1000 * elapsed))
+
+        # Add some additional response tags
+        if self.config['DATADOG_RESPONSE_AUTO_TAG']:
+            self.add_request_tags(['status_code:%s' % (response.status_code, )])
+
+        # Emit our timing metric
+        self.statsd.timing(self.config['DATADOG_RESPONSE_METRIC_NAME'],
+                           elapsed,
+                           self.get_request_tags(),
+                           self.config['DATADOG_RESPONSE_SAMPLE_RATE'])
+
+        # We ALWAYS have to return the original response
+        return response
+
+    def get_request_tags(self):
+        """
+        Get the current list of tags set for this request
+
+        :rtype: list
+        """
+        return getattr(g, 'flask_datadog_request_tags', [])
+
+    def add_request_tags(self, tags):
+        """
+        Add the provided list of tags to the tags stored for this request
+
+        :param tags: tags to add to this requests tags
+        :type tags: list
+        :rtype: list
+        """
+        # Get the current list of tags to append to
+        # DEV: We use this method since ``self.get_request_tags`` will ensure that we get a list back
+        current_tags = self.get_request_tags()
+
+        # Append our new tags, and return the new full list of tags for this request
+        g.flask_datadog_request_tags = current_tags + tags
+        return g.flask_datadog_request_tags
+
     def __getattr__(self, name):
         """
         Magic method for fetching any underlying attributes from `self.statsd`
@@ -108,7 +210,7 @@ class StatsD(object):
         # If `self.statsd` has the attribute then return that attribute
         if self.statsd and hasattr(self.statsd, name):
             return getattr(self.statsd, name)
-        raise AttributeError('\'StatsD\' has has attribute \'%s\'' % (name, ))
+        raise AttributeError('\'StatsD\' has has attribute \'{name}\''.format(name=name))
 
     def __enter__(self):
         """
